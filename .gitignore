@@ -1,0 +1,13 @@
+# Heruntergeladene Kursdaten nicht versionieren
+data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Zugangsdaten
+.env
+
+# Lokale Werkzeug-Einstellungen
+.claude/

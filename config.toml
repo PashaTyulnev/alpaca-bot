@@ -1,0 +1,24 @@
+# Konfiguration für den Datenimport (download_data.py)
+
+# Aktien-Universum, das automatisch geladen wird:
+#   "nasdaq-common" = alle an der Nasdaq gelisteten Stammaktien (ohne ETFs, Warrants,
+#                     Units, Rights, Vorzugsaktien und Test-Symbole), Liste von nasdaqtrader.com
+#   ""              = kein Universum, nur die Ticker unten
+universe = "nasdaq-common"
+
+# Zusätzliche Ticker (Yahoo-Schreibweise), z. B. Benchmarks, die nicht an der Nasdaq notieren
+tickers = ["SPY"]
+
+# Intervalle: "1d" = komplette Historie, "1h" = die letzten 730 Tage (Limit von Yahoo).
+# Stundendaten werden bei jedem Lauf mit den vorhandenen zusammengeführt, die Historie wächst also.
+intervals = ["1d", "1h"]
+
+# Zielordner (relativ zum Projektordner)
+data_dir = "data"
+
+# Pause zwischen zwei Anfragen an Yahoo in Sekunden (schützt vor Sperren)
+pause_seconds = 0.5
+
+# Dateien, die jünger als so viele Stunden sind, werden übersprungen.
+# So kann ein abgebrochener Import einfach erneut gestartet werden. 0 = immer neu laden.
+skip_if_younger_than_hours = 12

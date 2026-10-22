@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Korrelationen</title>
+<style>
+:root { --bg:#f7f7f5; --card:#fff; --fg:#1d1d1f; --muted:#6b6b70; --line:#e4e4e0; --accent:#2f6fde;
+        --neg:#2a78d6; --mid:#f0efec; --pos:#e34948; --chip:#f0efec; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#141416; --card:#1c1c1f; --fg:#ececee; --muted:#9a9aa0; --line:#2c2c30; --accent:#5b8ff0;
+          --neg:#3987e5; --mid:#383835; --pos:#e66767; --chip:#2a2a2e; } }
+* { box-sizing:border-box; }
+body { margin:0; padding:32px 16px; background:var(--bg); color:var(--fg);
+       font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { max-width:1400px; margin:0 auto; }
+a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+h1 { font-size:22px; margin:4px 0; }
+h2 { font-size:15px; margin:0 0 10px; }
+.sub, .muted { color:var(--muted); }
+.sub { margin:0 0 16px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+details.card { margin-bottom:16px; } details summary { cursor:pointer; font-weight:600; }
+details ul { margin:8px 0 0; padding-left:20px; color:var(--muted); } details li { margin:4px 0; }
+.tools { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:16px; }
+.seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:var(--card); }
+.seg button { border:0; background:none; color:var(--fg); font:inherit; padding:7px 14px; cursor:pointer; }
+.seg button + button { border-left:1px solid var(--line); }
+.seg button[aria-pressed="true"] { background:var(--accent); color:#fff; }
+.tools input { padding:7px 12px; border:1px solid var(--line); border-radius:8px; background:var(--card);
+               color:var(--fg); font:inherit; width:220px; }
+.kpis { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
+.kpi { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 16px; min-width:150px; }
+.kpi-h { font-size:12px; color:var(--muted); }
+.kpi-v { font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; }
+.grid { display:grid; grid-template-columns:minmax(0, 760px) minmax(280px, 1fr); gap:16px; align-items:start; }
+@media (max-width: 1000px) { .grid { grid-template-columns:minmax(0, 1fr); } }
+#wrap { position:relative; width:100%; aspect-ratio:1; }
+#hm { width:100%; height:100%; display:block; cursor:crosshair; border-radius:4px; }
+.legend { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:12px; color:var(--muted); }
+.legend .ramp { flex:1; height:10px; border-radius:5px; background:linear-gradient(90deg, var(--neg), var(--mid), var(--pos)); }
+#tip { position:fixed; pointer-events:none; background:var(--card); border:1px solid var(--line); border-radius:8px;
+       padding:8px 10px; font-size:12px; box-shadow:0 4px 16px rgba(0,0,0,.15); display:none; z-index:10; max-width:320px; }
+#tip strong { font-size:16px; font-variant-numeric:tabular-nums; }
+table { width:100%; border-collapse:collapse; }
+td, th { padding:5px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
+th { font-size:12px; font-weight:600; color:var(--muted); }
+tr:last-child td { border-bottom:0; }
+td.v { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; width:72px; }
+td.t { font-weight:600; white-space:nowrap; cursor:pointer; }
+td.n { color:var(--muted); font-size:12px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; }
+.pairs { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
+@media (max-width: 800px) { .pairs { grid-template-columns:1fr; } }
+.scroll { max-height:520px; overflow:auto; }
+footer { color:var(--muted); font-size:12px; margin-top:16px; }
+</style></head>
+<body><main>
+<a href="overview.html">← Datenübersicht</a> · <a href="analysis.html">Eröffnungs-Analysen</a>
+<h1>Korrelationen</h1>
+<p class="sub" id="sub"></p>
+
+<details class="card">
+  <summary>So liest du die Seite</summary>
+  <ul>
+    <li>Verglichen werden <b>Renditen</b> (prozentuale Kursänderungen), nicht Kurse – zwei Aktien, die beide steigen, sind nicht automatisch korreliert.</li>
+    <li><b>+1</b> = bewegen sich immer gleich, <b>0</b> = kein Zusammenhang, <b>−1</b> = immer entgegengesetzt.</li>
+    <li>1 Woche bis 1 Monat nutzen <b>Stundenrenditen</b> (ca. 7 pro Tag), 3 Monate und 1 Jahr <b>Tagesrenditen</b>. Kurze Fenster schwanken stark – eine hohe Korrelation über 1 Woche kann Zufall sein.</li>
+    <li><b>Roh</b>: Fast alle Aktien korrelieren positiv, weil der Gesamtmarkt sie mitzieht. <b>Marktbereinigt</b>: Der Anteil, den SPY erklärt, ist herausgerechnet – übrig bleiben echte Branchen- und Firmen-Zusammenhänge.</li>
+    <li>Die Heatmap ist so sortiert, dass ähnliche Aktien nebeneinander liegen. Rote Blöcke auf der Diagonale sind Gruppen, die gemeinsam laufen (oft eine Branche).</li>
+    <li>Klick auf eine Zelle oder Suche nach einem Ticker zeigt dessen stärkste Partner.</li>
+  </ul>
+</details>
+
+<div class="tools">
+  <div class="seg" id="win" role="group" aria-label="Zeitfenster"></div>
+  <div class="seg" id="mode" role="group" aria-label="Berechnung">
+    <button data-m="raw">Roh</button><button data-m="adj">Marktbereinigt</button>
+  </div>
+  <input id="q" list="tl" placeholder="Ticker suchen, z. B. AAPL" autocomplete="off">
+  <datalist id="tl"></datalist>
+</div>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="grid">
+  <div class="card">
+    <div id="wrap"><canvas id="hm" aria-label="Korrelations-Heatmap"></canvas></div>
+    <div class="legend"><span>−1 gegenläufig</span><div class="ramp"></div><span>+1 gleichläufig</span></div>
+  </div>
+  <div class="card" id="side">
+    <h2 id="sideh"></h2>
+    <div class="scroll"><table id="partners"></table></div>
+  </div>
+</div>
+
+<div class="pairs">
+  <div class="card"><h2>Stärkste Gleichläufer</h2><div class="scroll"><table id="hi"></table></div></div>
+  <div class="card"><h2>Stärkste Gegenläufer</h2><div class="scroll"><table id="lo"></table></div></div>
+</div>
+<footer id="foot"></footer>
+</main>
+<div id="tip"></div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const $ = id => document.getElementById(id);
+const fmt = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2).replace(".", ",");
+const pct = v => (v * 100).toLocaleString("de-DE", { maximumFractionDigits: 1 }) + " %";
+const state = { w: DATA.windows.length > 2 ? 2 : 0, m: "adj", sel: null };
+const cache = {};
+
+function decode(win, mode) {
+  const k = win.key + mode;
+  if (!cache[k]) {
+    const bin = atob(win[mode].m), n = win[mode].tickers.length, a = new Int8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i) << 24 >> 24;
+    const idx = new Map(win[mode].tickers.map((t, i) => [t, i]));
+    cache[k] = { a, n, t: win[mode].tickers, idx };
+  }
+  return cache[k];
+}
+
+function hex(c) { c = c.trim().replace("#", ""); return [0, 2, 4].map(i => parseInt(c.slice(i, i + 2), 16)); }
+function palette() {
+  const s = getComputedStyle(document.documentElement);
+  const neg = hex(s.getPropertyValue("--neg")), mid = hex(s.getPropertyValue("--mid")), pos = hex(s.getPropertyValue("--pos"));
+  const lut = [];
+  for (let v = -100; v <= 100; v++) {
+    const t = Math.abs(v) / 100, end = v < 0 ? neg : pos;
+    lut.push(mid.map((m, i) => Math.round(m + (end[i] - m) * t)));
+  }
+  return lut;
+}
+const colorOf = (lut, v) => "rgb(" + lut[Math.max(-100, Math.min(100, v)) + 100].join(",") + ")";
+
+let img = null, lut = palette();
+function drawImage() {
+  const win = DATA.windows[state.w], M = decode(win, state.m), { a, n } = M;
+  const off = document.createElement("canvas"); off.width = n; off.height = n;
+  const ctx = off.getContext("2d"), id = ctx.createImageData(n, n);
+  for (let i = 0; i < n * n; i++) {
+    const v = a[i], c = v === -128 ? lut[100] : lut[v + 100];
+    id.data.set([c[0], c[1], c[2], 255], i * 4);
+  }
+  ctx.putImageData(id, 0, 0); img = off;
+  render();
+}
+
+function render() {
+  const cv = $("hm"), r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  const ctx = cv.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  const M = decode(DATA.windows[state.w], state.m);
+  if (state.sel && M.idx.has(state.sel)) {
+    const i = M.idx.get(state.sel), s = cv.width / M.n;
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue("--fg");
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.strokeRect(0, i * s, cv.width, s); ctx.strokeRect(i * s, 0, s, cv.height);
+  }
+}
+
+function cellAt(ev) {
+  const r = $("hm").getBoundingClientRect(), M = decode(DATA.windows[state.w], state.m);
+  const j = Math.floor((ev.clientX - r.left) / r.width * M.n), i = Math.floor((ev.clientY - r.top) / r.height * M.n);
+  return i >= 0 && j >= 0 && i < M.n && j < M.n ? { i, j, M } : null;
+}
+
+$("hm").addEventListener("pointermove", ev => {
+  const c = cellAt(ev), tip = $("tip");
+  if (!c) { tip.style.display = "none"; return; }
+  const v = c.M.a[c.i * c.M.n + c.j], A = c.M.t[c.i], B = c.M.t[c.j];
+  tip.replaceChildren();
+  const strong = document.createElement("strong"); strong.textContent = v === -128 ? "–" : fmt(v / 100);
+  const line = document.createElement("div"); line.textContent = A + " × " + B;
+  const nm = document.createElement("div"); nm.className = "muted";
+  nm.textContent = [DATA.names[A], DATA.names[B]].filter(Boolean).map(s => s.split(" - ")[0]).join(" · ");
+  tip.append(strong, line, nm);
+  tip.style.display = "block";
+  const x = Math.min(ev.clientX + 14, innerWidth - tip.offsetWidth - 8), y = Math.min(ev.clientY + 14, innerHeight - tip.offsetHeight - 8);
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+});
+$("hm").addEventListener("pointerleave", () => $("tip").style.display = "none");
+$("hm").addEventListener("click", ev => { const c = cellAt(ev); if (c) select(c.M.t[c.i]); });
+
+function row(tbody, a, b, v, click) {
+  const tr = document.createElement("tr");
+  const add = (cls, text) => { const td = document.createElement("td"); td.className = cls; td.textContent = text; tr.append(td); return td; };
+  const ta = add("t", a); ta.onclick = () => select(a);
+  if (b !== null) { const tb = add("t", b); tb.onclick = () => select(b); }
+  add("n", (DATA.names[b ?? a] || "").split(" - ")[0]);
+  const tv = add("v", fmt(v));
+  const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = colorOf(lut, Math.round(v * 100));
+  tv.prepend(sw);
+  tbody.append(tr);
+}
+
+function fillPairs(id, list) {
+  const t = $(id); t.replaceChildren();
+  const head = document.createElement("tr");
+  for (const h of ["A", "B", "Name B", "Korr."]) { const th = document.createElement("th"); th.textContent = h; head.append(th); }
+  t.append(head);
+  for (const [a, b, v] of list) row(t, a, b, v);
+}
+
+function fillSide() {
+  const win = DATA.windows[state.w], M = decode(win, state.m), t = $("partners");
+  t.replaceChildren();
+  if (!state.sel) {
+    $("sideh").textContent = "Ticker wählen";
+    const p = document.createElement("p"); p.className = "muted";
+    p.textContent = "Klicke auf eine Zelle der Heatmap oder suche oben nach einem Ticker, um seine stärksten Gleich- und Gegenläufer zu sehen.";
+    t.append(p); return;
+  }
+  if (!M.idx.has(state.sel)) {
+    $("sideh").textContent = state.sel;
+    const p = document.createElement("p"); p.className = "muted";
+    p.textContent = "In diesem Zeitfenster nicht enthalten (zu wenige Daten oder nicht unter den liquidesten " + DATA.top + ").";
+    t.append(p); return;
+  }
+  const i = M.idx.get(state.sel), vals = [];
+  for (let j = 0; j < M.n; j++) if (j !== i && M.a[i * M.n + j] !== -128) vals.push([M.t[j], M.a[i * M.n + j] / 100]);
+  vals.sort((x, y) => y[1] - x[1]);
+  $("sideh").textContent = state.sel + " – " + ((DATA.names[state.sel] || "").split(" - ")[0] || "");
+  const sec = label => { const tr = document.createElement("tr"); const th = document.createElement("th"); th.colSpan = 3; th.textContent = label; tr.append(th); t.append(tr); };
+  sec("Stärkste Gleichläufer");
+  vals.slice(0, 12).forEach(([b, v]) => row(t, b, null, v));
+  sec("Stärkste Gegenläufer");
+  vals.slice(-8).reverse().forEach(([b, v]) => row(t, b, null, v));
+}
+
+function select(t) {
+  state.sel = t ? t.toUpperCase() : null;
+  $("q").value = state.sel || "";
+  render(); fillSide();
+}
+
+function kpi(label, value) {
+  const d = document.createElement("div"); d.className = "kpi";
+  const h = document.createElement("div"); h.className = "kpi-h"; h.textContent = label;
+  const v = document.createElement("div"); v.className = "kpi-v"; v.textContent = value;
+  d.append(h, v); return d;
+}
+
+function update() {
+  const win = DATA.windows[state.w], P = win[state.m];
+  document.querySelectorAll("#win button").forEach((b, i) => b.setAttribute("aria-pressed", i === state.w));
+  document.querySelectorAll("#mode button").forEach(b => b.setAttribute("aria-pressed", b.dataset.m === state.m));
+  $("kpis").replaceChildren(
+    kpi("Aktien", P.tickers.length.toLocaleString("de-DE")),
+    kpi("Datenpunkte", win.n_obs + (win.source === "1h" ? " Stunden" : " Tage")),
+    kpi("Zeitraum", win.range),
+    kpi("Ø Korrelation", fmt(P.mean)),
+    kpi("Paare > +0,7", pct(P.share_hi)),
+    kpi("Paare < −0,3", pct(P.share_lo)),
+  );
+  fillPairs("hi", P.hi); fillPairs("lo", P.lo);
+  drawImage(); fillSide();
+}
+
+DATA.windows.forEach((w, i) => {
+  const b = document.createElement("button"); b.textContent = w.label;
+  b.onclick = () => { state.w = i; update(); };
+  $("win").append(b);
+});
+document.querySelectorAll("#mode button").forEach(b => b.onclick = () => { state.m = b.dataset.m; update(); });
+for (const t of Object.keys(DATA.names).sort()) { const o = document.createElement("option"); o.value = t; o.label = DATA.names[t].split(" - ")[0]; $("tl").append(o); }
+$("q").addEventListener("change", e => select(e.target.value.trim() || null));
+$("sub").textContent = "Die " + DATA.top + " liquidesten Nasdaq-Aktien (nach Dollar-Umsatz), sortiert nach Ähnlichkeit.";
+$("foot").textContent = "Erzeugt am " + DATA.created + " mit correlations.py. Nach neuem Import erneut ausführen.";
+new ResizeObserver(() => img && render()).observe($("wrap"));
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { lut = palette(); update(); });
+update();
+</script>
+</body></html>
