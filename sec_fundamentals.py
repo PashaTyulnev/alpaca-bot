@@ -50,34 +50,41 @@ def ticker_to_cik(data_dir: Path) -> dict[str, int]:
     return {t: sec[t] for t in ours if t in sec}
 
 
-def extract_facts(data_dir: Path, mapping: dict[str, int]) -> pd.DataFrame:
-    wanted = {**FLOW, **INSTANT}
-    cik_to_tickers: dict[int, list[str]] = {}
-    for t, c in mapping.items():
-        cik_to_tickers.setdefault(c, []).append(t)
+FACT_COLUMNS = ["cik", "key", "prio", "start", "end", "val", "filed", "form"]
+
+
+def fact_rows(cik: int, companyfacts: dict) -> list[tuple]:
+    """Relevante Einzelwerte aus einer companyfacts-JSON (Bulk-Datei oder SEC-API, gleiches Format)."""
+    facts = companyfacts.get("facts", {})
+    gaap = facts.get("us-gaap", {})
     rows = []
-    with zipfile.ZipFile(data_dir / "sec" / "companyfacts.zip") as z:
-        names = {int(n[3:13]): n for n in z.namelist() if n.startswith("CIK")}
-        for i, (cik, tickers) in enumerate(cik_to_tickers.items(), 1):
-            if cik not in names:
-                continue
-            facts = json.loads(z.read(names[cik])).get("facts", {})
-            gaap = facts.get("us-gaap", {})
-            for key, concepts in wanted.items():
-                for prio, concept in enumerate(concepts):
-                    for unit, items in gaap.get(concept, {}).get("units", {}).items():
-                        if unit != "USD":
-                            continue
-                        for it in items:
-                            rows.append((cik, key, prio, it.get("start"), it["end"], it["val"], it["filed"], it.get("form")))
-            for it in facts.get(SHARES[0], {}).get(SHARES[1], {}).get("units", {}).get("shares", []):
-                rows.append((cik, "shares", 0, None, it["end"], it["val"], it["filed"], it.get("form")))
-            if i % 500 == 0:
-                print(f"  {i}/{len(cik_to_tickers)} Firmen gelesen")
-    df = pd.DataFrame(rows, columns=["cik", "key", "prio", "start", "end", "val", "filed", "form"])
+    for key, concepts in {**FLOW, **INSTANT}.items():
+        for prio, concept in enumerate(concepts):
+            for it in gaap.get(concept, {}).get("units", {}).get("USD", []):
+                rows.append((cik, key, prio, it.get("start"), it["end"], it["val"], it["filed"], it.get("form")))
+    for it in facts.get(SHARES[0], {}).get(SHARES[1], {}).get("units", {}).get("shares", []):
+        rows.append((cik, "shares", 0, None, it["end"], it["val"], it["filed"], it.get("form")))
+    return rows
+
+
+def facts_frame(rows: list[tuple]) -> pd.DataFrame:
+    df = pd.DataFrame(rows, columns=FACT_COLUMNS)
     for col in ("start", "end", "filed"):
         df[col] = pd.to_datetime(df[col])
     return df
+
+
+def extract_facts(data_dir: Path, mapping: dict[str, int]) -> pd.DataFrame:
+    ciks = sorted(set(mapping.values()))
+    rows = []
+    with zipfile.ZipFile(data_dir / "sec" / "companyfacts.zip") as z:
+        names = {int(n[3:13]): n for n in z.namelist() if n.startswith("CIK")}
+        for i, cik in enumerate(ciks, 1):
+            if cik in names:
+                rows += fact_rows(cik, json.loads(z.read(names[cik])))
+            if i % 500 == 0:
+                print(f"  {i}/{len(ciks)} Firmen gelesen")
+    return facts_frame(rows)
 
 
 def build_annual(facts: pd.DataFrame) -> pd.DataFrame:

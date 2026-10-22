@@ -191,6 +191,46 @@ Geprüft wird:
 
 Die Ergebnisse stehen in `data/long_only.html`.
 
+## Paper-Trading auf dem Server (Linux)
+
+`paper_trade.py` handelt die Q+V-Strategie (Hauptvariante aus `long_only.py`) auf dem Alpaca-**Paper**-Konto. Die nötigen Daten holt es selbst: Kurse von Alpaca, Fundamentaldaten von der SEC. Einen `data/`-Ordner aus der lokalen Analyse braucht es nicht.
+
+Einrichten:
+
+```bash
+git clone https://github.com/PashaTyulnev/alpaca-bot.git && cd alpaca-bot
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env && nano .env      # Alpaca-Keys und SEC_USER_AGENT eintragen
+chmod +x run_paper.sh
+.venv/bin/python paper_trade.py plan   # Probelauf: Zielauswahl berechnen, handelt nicht
+```
+
+Cronjob einrichten (`crontab -e`), Pfad anpassen:
+
+```
+*/15 * * * 1-5 /home/DEINUSER/alpaca-bot/run_paper.sh tick
+```
+
+Was `tick` tut, gesteuert über die Börsenuhr von Alpaca (die Server-Zeitzone ist egal):
+- **Erster Handelstag des Monats:** vorbörslich die Zielauswahl berechnen und 15 Minuten nach Börsenstart umschichten. Beim allerersten Start passiert das schon am nächsten Handelstag.
+- **Nach Börsenschluss:** Wert der Strategie und SPY-Schlusskurs in `data/live/performance.csv` schreiben.
+- **Sonst:** nichts.
+
+Ansehen:
+
+```bash
+.venv/bin/python paper_trade.py status   # Positionen und Vergleich mit SPY
+tail -f data/live/paper.log               # Protokoll
+```
+
+Sicherheit:
+- Das Skript startet nur, wenn `ALPACA_TRADING_URL` auf `paper-api` zeigt.
+- Es verwaltet nur Stückzahlen, die es selbst gekauft hat, und nur das Bargeld, das beim ersten Start frei war. Die Buchhaltung steht in `data/live/state.json`. Andere Positionen im Konto bleiben unberührt.
+
+Hinweise:
+- Bei kleinem Konto (z. B. 10.000 $) entfallen auf jede der rund 95 Aktien nur ~100 $. Nicht fraktionierbare, teure Aktien werden dann übersprungen, das steht im Log. Für einen aussagekräftigen Test das Paper-Konto im Alpaca-Dashboard auf z. B. 100.000 $ zurücksetzen.
+- Dividenden schreibt Alpaca dem Konto gut, die Buchhaltung der Strategie erfasst sie aber nicht. Der Vergleich in `status` nutzt deshalb ebenfalls SPY ohne Dividenden.
+
 ## Einschränkungen der Datenquelle
 
 - **Keine offizielle API.** Yahoo Finance hat keine offizielle Schnittstelle, `yfinance` liest inoffizielle Endpunkte. Das kann ohne Vorwarnung kaputtgehen oder gedrosselt werden. Die Nutzung ist laut Yahoo nur für private Zwecke gedacht.

@@ -63,7 +63,14 @@ class Alpaca:
         self.lock = threading.Lock()  # Ratenbremse gilt für alle parallelen Downloads gemeinsam
 
     def get(self, url: str, params: dict) -> dict:
-        full = url + "?" + urllib.parse.urlencode(params)
+        return self.request("GET", url, params)
+
+    def request(self, method: str, url: str, params: dict | None = None, payload: dict | None = None):
+        """HTTP-Anfrage mit Ratenbremse und Wiederholung. Orders dürfen wiederholt werden, weil sie eine
+        eindeutige client_order_id tragen – Alpaca lehnt Duplikate ab."""
+        full = url + ("?" + urllib.parse.urlencode(params) if params else "")
+        data = json.dumps(payload).encode() if payload is not None else None
+        headers = {**self.headers, **({"Content-Type": "application/json"} if data else {})}
         for attempt in range(6):
             with self.lock:
                 wait = MIN_SECONDS_BETWEEN_REQUESTS - (time.time() - self.last_request)
@@ -71,19 +78,22 @@ class Alpaca:
                     time.sleep(wait)
                 self.last_request = time.time()
             try:
-                with urllib.request.urlopen(urllib.request.Request(full, headers=self.headers), timeout=60) as resp:
+                req = urllib.request.Request(full, data=data, headers=headers, method=method)
+                with urllib.request.urlopen(req, timeout=60) as resp:
                     body = resp.read()
                     if resp.headers.get("Content-Encoding") == "gzip":
                         body = gzip.decompress(body)
-                    return json.loads(body)
+                    return json.loads(body) if body else None
             except urllib.error.HTTPError as e:
                 body = e.read().decode(errors="replace")[:200]
                 if e.code == 429:
                     print("  Alpaca drosselt (429), warte 30 s ...")
                     time.sleep(30)
                     continue
-                if e.code in (401, 403):
-                    raise SystemExit(f"Alpaca lehnt die Zugangsdaten ab (HTTP {e.code}): {body}")
+                if e.code == 401:
+                    raise SystemExit(f"Alpaca lehnt die Zugangsdaten ab (HTTP 401): {body}")
+                if e.code == 403:
+                    raise SystemExit(f"Alpaca verweigert den Zugriff (HTTP 403): {body}")
                 raise RuntimeError(f"HTTP {e.code}: {body}") from e
             except (urllib.error.URLError, TimeoutError) as e:
                 print(f"  Netzwerkfehler ({e}), neuer Versuch in 10 s ...")
@@ -119,6 +129,41 @@ class Alpaca:
         })
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True).dt.tz_convert(NY)
         return df[["timestamp", "open", "high", "low", "close", "volume", "trades", "vwap"]]
+
+    def daily_bars(self, symbols: list[str], start: str, end: str, chunk: int = 100) -> pd.DataFrame:
+        """Tageskerzen (split-bereinigt) für viele Symbole: lange Tabelle symbol, date, close, volume."""
+        rows = []
+        for i in range(0, len(symbols), chunk):
+            params = {"symbols": ",".join(symbols[i:i + chunk]), "timeframe": "1Day", "feed": "sip",
+                      "adjustment": "split", "limit": 10000, "start": start, "end": end}
+            while True:
+                page = self.get(self.data_url + "/stocks/bars", params)
+                for sym, bars in (page.get("bars") or {}).items():
+                    rows += [(sym, b["t"], b["c"], b["v"]) for b in bars]
+                token = page.get("next_page_token")
+                if not token:
+                    break
+                params["page_token"] = token
+        df = pd.DataFrame(rows, columns=["symbol", "date", "close", "volume"])
+        df["date"] = pd.to_datetime(df["date"], utc=True).dt.tz_convert(NY).dt.tz_localize(None).dt.normalize()
+        return df
+
+    def splits(self, start: str, end: str) -> pd.DataFrame:
+        """Alle Aktiensplits (vorwärts und rückwärts) im Zeitraum: symbol, date, ratio (neu/alt)."""
+        params = {"types": "forward_split,reverse_split", "start": start, "end": end, "limit": 1000}
+        rows = []
+        while True:
+            page = self.get("https://data.alpaca.markets/v1/corporate-actions", params)
+            for kind in ("forward_splits", "reverse_splits"):
+                for s in (page.get("corporate_actions") or {}).get(kind, []):
+                    rows.append((s["symbol"], s["ex_date"], float(s["new_rate"]) / float(s["old_rate"])))
+            token = page.get("next_page_token")
+            if not token:
+                break
+            params["page_token"] = token
+        df = pd.DataFrame(rows, columns=["symbol", "date", "ratio"])
+        df["date"] = pd.to_datetime(df["date"])
+        return df
 
 
 def add_session(df: pd.DataFrame, cal: pd.DataFrame) -> pd.DataFrame:
